@@ -1,4 +1,3 @@
-# tmdb_recommendation_api.py (Production Version)
 import os
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,7 +72,7 @@ class RecommendationResponse(BaseModel):
 
 def build_dataset_on_server():
     """Build dataset on server startup if it doesn't exist"""
-    dataset_path = "./Dataset/tmdb_movies.csv"
+    dataset_path = "./Dataset/tmdb_movies_massive.csv"
     
     # Create Dataset directory if it doesn't exist
     os.makedirs("./Dataset", exist_ok=True)
