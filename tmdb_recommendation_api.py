@@ -206,16 +206,16 @@ def get_movie_recommendations(movie_title: str, n_recommendations: int = 10):
     
     query_idx = query_movie.name
     
-    # Calculate similarity scores for each component
+    # Calculate similarity scores for each component with better weights
     similarities = {}
     
-    # 1. Overview similarity (40% weight)
+    # 1. Overview similarity (45% weight - more important for plot)
     overview_similarities = cosine_similarity(tfidf_matrix[query_idx], tfidf_matrix).flatten()
-    similarities['overview'] = overview_similarities * 0.4
+    similarities['overview'] = overview_similarities * 0.45
     
-    # 2. Genre similarity (35% weight)
+    # 2. Genre similarity (30% weight)
     genre_similarities = cosine_similarity(genre_matrix[query_idx], genre_matrix).flatten()
-    similarities['genre'] = genre_similarities * 0.35
+    similarities['genre'] = genre_similarities * 0.30
     
     # 3. Cast similarity (15% weight)
     cast_similarities = cosine_similarity(cast_matrix[query_idx], cast_matrix).flatten()
@@ -237,8 +237,9 @@ def get_movie_recommendations(movie_title: str, n_recommendations: int = 10):
     similar_indices = combined_similarities.argsort()[::-1]
     
     recommendations = []
-    seen_titles = set()
-    seen_titles.add(query_movie['title'].lower())
+    seen_exact_titles = set()
+    query_title_clean = query_movie['title'].lower().strip()
+    seen_exact_titles.add(query_title_clean)
     
     for idx in similar_indices:
         if len(recommendations) >= n_recommendations:
@@ -248,16 +249,26 @@ def get_movie_recommendations(movie_title: str, n_recommendations: int = 10):
             continue
             
         movie = movies_df.iloc[idx]
+        movie_title_clean = movie['title'].lower().strip()
         
-        # Avoid duplicate titles
-        if movie['title'].lower() in seen_titles:
+        # Only avoid EXACT duplicates (allow sequels/prequels)
+        if movie_title_clean in seen_exact_titles:
             continue
         
-        seen_titles.add(movie['title'].lower())
+        seen_exact_titles.add(movie_title_clean)
         
-        # Skip movies with very low similarity
-        if combined_similarities[idx] < 0.01:
+        # Lower similarity threshold to include more good matches
+        if combined_similarities[idx] < 0.005:  # Much lower threshold
             continue
+        
+        # Bonus for high ratings (boost similarity score for highly rated movies)
+        rating_bonus = 0
+        if pd.notna(movie['vote_average']) and movie['vote_average'] >= 7.0:
+            rating_bonus = 0.05
+        elif pd.notna(movie['vote_average']) and movie['vote_average'] >= 8.0:
+            rating_bonus = 0.10
+        
+        final_similarity = combined_similarities[idx] + rating_bonus
         
         # Create recommendation
         recommendation = MovieRecommendation(
@@ -265,10 +276,13 @@ def get_movie_recommendations(movie_title: str, n_recommendations: int = 10):
             year=int(movie['year']) if pd.notna(movie['year']) else None,
             poster_url=movie['poster_url'] if pd.notna(movie['poster_url']) else None,
             rating=float(movie['vote_average']) if pd.notna(movie['vote_average']) else 0.0,
-            similarity_score=float(combined_similarities[idx])
+            similarity_score=float(final_similarity)  # Keep for sorting, but won't show in frontend
         )
         
         recommendations.append(recommendation)
+    
+    # Sort by rating (highest first) for better recommendations
+    recommendations.sort(key=lambda x: x.rating, reverse=True)
     
     # Query movie info for response
     query_movie_info = {
